@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ભાગ યુટ્યુબર ભાગ</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #111;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #gameCanvas {
+            background: linear-gradient(#1a1a2e, #16213e);
+            border: 2px solid #fff;
+            box-shadow: 0 0 15px rgba(255,255,255,0.2);
+        }
+        .instructions {
+            margin-top: 10px;
+            font-size: 14px;
+            color: #ccc;
+            text-align: center;
+        }
+        .yt-logo-container {
+            margin-top: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .yt-logo {
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            border: 2px solid #FF0000;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>🎮 ભાગ યુટ્યુબર ભાગ</h2>
+    <canvas id="gameCanvas" width="600" height="350"></canvas>
+    
+    <div class="instructions">
+        ઉપર/નીચે એરો કી થી લેન બદલો. ઘર આવે એટલે સંતાવા માટે H કી દબાવો!
+    </div>
+
+    <!-- YouTube Channel Logo Bottom Section -->
+    <div class="yt-logo-container">
+        <img src="https://avatars.githubusercontent.com/u/198889148?v=4" alt="YouTube Channel Logo" class="yt-logo">
+        <span><b>Himeshsshow</b> - મારી યુટ્યુબ ચેનલને સબ્સ્ક્રાઇબ કરો</span>
+    </div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let score = 0;
+let gameState = 'RUNNING'; // 'RUNNING', 'HIDING', 'WIN', 'GAME_OVER'
+let hideTimer = 300; // 5 મિનિટ (300 સેકન્ડ)
+let hideInterval = null;
+
+const lanes = [130, 200, 270];
+let currentLaneIndex = 1;
+
+// પ્લેયર
+const player = {
+    x: 60,
+    y: lanes[currentLaneIndex],
+    width: 45,
+    height: 22,
+    targetY: lanes[currentLaneIndex],
+
+    draw: function() {
+        ctx.fillStyle = '#FF5722';
+        ctx.fillRect(this.x, this.y + 14, this.width, 8);
+
+        ctx.fillStyle = '#FFD54F';
+        ctx.beginPath();
+        ctx.moveTo(this.x - 6, this.y + 16);
+        ctx.lineTo(this.x - 16, this.y + 18);
+        ctx.lineTo(this.x - 6, this.y + 20);
+        ctx.fill();
+
+        ctx.fillStyle = '#2196F3';
+        ctx.fillRect(this.x + 12, this.y - 8, 16, 22);
+    },
+
+    update: function() {
+        if (this.y < this.targetY) this.y += 5;
+        if (this.y > this.targetY) this.y -= 5;
+    },
+
+    moveUp: function() {
+        if (currentLaneIndex > 0) {
+            currentLaneIndex--;
+            this.targetY = lanes[currentLaneIndex];
+        }
+    },
+
+    moveDown: function() {
+        if (currentLaneIndex < lanes.length - 1) {
+            currentLaneIndex++;
+            this.targetY = lanes[currentLaneIndex];
+        }
+    }
+};
+
+// ગિફ્ટ બોક્સ
+class GiftBox {
+    constructor() { this.reset(); }
+    reset() {
+        this.x = 650 + Math.random() * 200;
+        this.laneIndex = Math.floor(Math.random() * lanes.length);
+        this.y = lanes[this.laneIndex];
+        this.size = 40;
+        this.speed = 4.5;
+    }
+    draw() {
+        ctx.fillStyle = '#FFC107';
+        ctx.fillRect(this.x, this.y, this.size, this.size);
+        ctx.fillStyle = '#E53935';
+        ctx.fillRect(this.x + 16, this.y, 8, this.size);
+        ctx.fillRect(this.x, this.y + 16, this.size, 8);
+
+        ctx.fillStyle = '#4285F4';
+        ctx.font = 'bold 12px Arial';
+        ctx.fillText('G', this.x + 4, this.y + 13);
+
+        ctx.fillStyle = '#FF0000';
+        ctx.fillRect(this.x + 22, this.y + 25, 14, 10);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.beginPath();
+        ctx.moveTo(this.x + 26, this.y + 27);
+        ctx.lineTo(this.x + 32, this.y + 30);
+        ctx.lineTo(this.x + 26, this.y + 33);
+        ctx.fill();
+    }
+    update() {
+        this.x -= this.speed;
+        if (this.x < -this.size) {
+            this.reset();
+            score += 10;
+        }
+    }
+}
+
+// ઘર ઓબ્જેક્ટ
+const house = {
+    x: 1200,
+    y: 100,
+    width: 100,
+    height: 180,
+    speed: 3,
+    draw: function() {
+        ctx.fillStyle = '#8D6E63';
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        ctx.fillStyle = '#D32F2F';
+        ctx.beginPath();
+        ctx.moveTo(this.x - 10, this.y);
+        ctx.lineTo(this.x + this.width / 2, this.y - 40);
+        ctx.lineTo(this.x + this.width + 10, this.y);
+        ctx.fill();
+        ctx.fillStyle = '#3E2723';
+        ctx.fillRect(this.x + 35, this.y + 110, 30, 70);
+    },
+    update: function() {
+        if (score >= 100 && this.x > 400) {
+            this.x -= this.speed;
+        }
+    }
+};
+
+let giftBoxes = [new GiftBox(), new GiftBox()];
+giftBoxes[1].x = 900;
+
+// કંટ્રોલ્સ
+window.addEventListener('keydown', (e) => {
+    if (gameState === 'RUNNING') {
+        if (e.code === 'ArrowUp' || e.code === 'KeyW') player.moveUp();
+        if (e.code === 'ArrowDown' || e.code === 'KeyS') player.moveDown();
+        if (e.code === 'KeyH' && house.x <= 420) startHiding();
+    } else if (gameState === 'GAME_OVER' || gameState === 'WIN') {
+        if (e.code === 'Space') resetGame();
+    }
+});
+
+function startHiding() {
+    gameState = 'HIDING';
+    hideTimer = 300;
+    hideInterval = setInterval(() => {
+        hideTimer--;
+        if (hideTimer <= 0) {
+            clearInterval(hideInterval);
+            gameState = 'WIN';
+        }
+    }, 1000);
+}
+
+function checkCollisions() {
+    giftBoxes.forEach(box => {
+        if (
+            player.x < box.x + box.size &&
+            player.x + player.width > box.x &&
+            Math.abs(player.targetY - box.y) < 10
+        ) {
+            gameState = 'GAME_OVER';
+        }
+    });
+}
+
+function resetGame() {
+    score = 0;
+    gameState = 'RUNNING';
+    house.x = 1200;
+    if (hideInterval) clearInterval(hideInterval);
+    player.y = lanes[1];
+    player.targetY = lanes[1];
+    giftBoxes[0].reset();
+    giftBoxes[1].reset();
+    gameLoop();
+}
+
+let roadOffset = 0;
+function drawRoad() {
+    roadOffset -= 4;
+    if (roadOffset <= -40) roadOffset = 0;
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.2)';
+    ctx.lineWidth = 2;
+    ctx.setLineDash([20, 15]);
+    [175, 245].forEach(yPos => {
+        ctx.beginPath();
+        ctx.moveTo(roadOffset, yPos);
+        ctx.lineTo(canvas.width, yPos);
+        ctx.stroke();
+    });
+    ctx.setLineDash([]);
+}
+
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameState === 'RUNNING') {
+        drawRoad();
+        player.update();
+        player.draw();
+
+        house.update();
+        house.draw();
+
+        giftBoxes.forEach(box => {
+            box.update();
+            box.draw();
+        });
+
+        checkCollisions();
+
+        ctx.fillStyle = '#FFF';
+        ctx.font = '16px Arial';
+        ctx.fillText('Score: ' + score, 15, 25);
+
+        if (score >= 100 && house.x <= 420) {
+            ctx.fillStyle = '#FFEB3B';
+            ctx.font = 'bold 18px Arial';
+            ctx.fillText('ઘરમાં સંતાવા માટે H કી દબાવો!', 180, 50);
+        }
+
+        requestAnimationFrame(gameLoop);
+    } else if (gameState === 'HIDING') {
+        ctx.fillStyle = '#212121';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        ctx.fillStyle = '#FFCA28';
+        ctx.font = 'bold 22px Arial';
+        ctx.fillText('🏢 તમે ઘરની અંદર સંતાઈ ગયા છો!', 130, 100);
+
+        ctx.fillStyle = '#E53935';
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText('🚨 મેનેજર બહાર શોધી રહ્યો છે...', 160, 150);
+
+        let mins = Math.floor(hideTimer / 60);
+        let secs = hideTimer % 60;
+        ctx.fillStyle = '#FFF';
+        ctx.font = '30px Arial';
+        ctx.fillText(`બાકી સમય: ${mins}:${secs < 10 ? '0' : ''}${secs}`, 180, 220);
+
+        requestAnimationFrame(gameLoop);
+    } else if (gameState === 'WIN') {
+        ctx.fillStyle = '#4CAF50';
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText('🎉 વિજય! તમે મેનેજરથી બચી ગયા!', 100, 150);
+        ctx.fillStyle = '#FFF';
+        ctx.font = '16px Arial';
+        ctx.fillText('ફરી રમવા Spacebar દબાવો', 200, 200);
+    } else if (gameState === 'GAME_OVER') {
+        ctx.fillStyle = '#FF5252';
+        ctx.font = 'bold 28px Arial';
+        ctx.fillText('Game Over!', 220, 150);
+        ctx.fillStyle = '#FFF';
+        ctx.font = '16px Arial';
+        ctx.fillText('ફરી શરૂ કરવા Spacebar દબાવો', 190, 190);
+    }
+}
+
+gameLoop();
+</script>
+
+</body>
+</html>
