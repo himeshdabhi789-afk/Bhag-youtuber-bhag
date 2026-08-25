@@ -1,0 +1,175 @@
+nj<!DOCTYPE html>
+<html lang="gu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D ભાગ યુટ્યુબર ભાગ - Day Mode</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; }
+        #ui { position: absolute; top: 10px; left: 10px; color: #111; font-size: 22px; font-weight: bold; z-index: 10; background: rgba(255,255,255,0.7); padding: 5px 15px; border-radius: 8px; }
+        #gameover { display: none; position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: #ff0055; font-size: 40px; text-align: center; font-weight: bold; z-index: 10; text-shadow: 2px 2px 8px #fff; }
+    </style>
+    <!-- Three.js 3D Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="ui">Score: <span id="score">0</span></div>
+    <div id="gameover">GAME OVER!<br><span style="font-size: 20px; color: #111;">Press Space to Restart</span></div>
+
+    <script>
+        let scene, camera, renderer, player, obstacles = [], score = 0, isGameOver = false;
+        let lanes = [-2, 0, 2];
+        let currentLane = 1;
+
+        function init() {
+            // Scene Setup with Day Sky Color (Bright Blue)
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB); // બ્લુ દિવસનું આકાશ
+
+            // Camera Setup
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 3.5, 7);
+            camera.lookAt(0, 0, 0);
+
+            // Renderer Setup
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            // Sunlight (Day Lighting)
+            const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            sunLight.position.set(10, 20, 10);
+            scene.add(sunLight);
+
+            // Ambient Light (Bright Environment)
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            // Ground / Green Grass Fields
+            const grassGeometry = new THREE.PlaneGeometry(100, 100);
+            const grassMaterial = new THREE.MeshLambertMaterial({ color: 0x4CA64C });
+            const grass = new THREE.Mesh(grassGeometry, grassMaterial);
+            grass.rotation.x = -Math.PI / 2;
+            grass.position.y = -0.01;
+            scene.add(grass);
+
+            // Road (Track)
+            const roadGeometry = new THREE.PlaneGeometry(7, 100);
+            const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x444444 });
+            const road = new THREE.Mesh(roadGeometry, roadMaterial);
+            road.rotation.x = -Math.PI / 2;
+            road.position.z = -40;
+            scene.add(road);
+
+            // 3D Player (Hero Cube)
+            const playerGeo = new THREE.BoxGeometry(0.8, 0.8, 0.8);
+            const playerMat = new THREE.MeshLambertMaterial({ color: 0x0055FF }); // બ્લુ પ્લેયર
+            player = new THREE.Mesh(playerGeo, playerMat);
+            player.position.set(lanes[currentLane], 0.4, 0);
+            scene.add(player);
+
+            // Controls
+            window.addEventListener('keydown', handleInput);
+            window.addEventListener('resize', onWindowResize);
+
+            animate();
+        }
+
+        function spawnObstacle() {
+            if (isGameOver) return;
+            const lane = lanes[Math.floor(Math.random() * 3)];
+            const geo = new THREE.BoxGeometry(1, 1, 1);
+            const mat = new THREE.MeshLambertMaterial({ color: 0xE63946 }); // લાલ અવરોધ
+            const obstacle = new THREE.Mesh(geo, mat);
+            obstacle.position.set(lane, 0.5, -50);
+            scene.add(obstacle);
+            obstacles.push(obstacle);
+        }
+
+        setInterval(spawnObstacle, 1100);
+
+        function handleInput(e) {
+            if (isGameOver && e.code === 'Space') {
+                restartGame();
+                return;
+            }
+            if (e.key === 'ArrowLeft' && currentLane > 0) currentLane--;
+            if (e.key === 'ArrowRight' && currentLane < 2) currentLane++;
+            player.position.x = lanes[currentLane];
+        }
+
+        function animate() {
+            if (!isGameOver) {
+                requestAnimationFrame(animate);
+
+                for (let i = 0; i < obstacles.length; i++) {
+                    obstacles[i].position.z += 0.35;
+
+                    // Collision Detection
+                    if (Math.abs(obstacles[i].position.z - player.position.z) < 0.7 &&
+                        Math.abs(obstacles[i].position.x - player.position.x) < 0.7) {
+                        endGame();
+                    }
+
+                    if (obstacles[i].position.z > 5) {
+                        scene.remove(obstacles[i]);
+                        obstacles.splice(i, 1);
+                        score += 10;
+                        document.getElementById('score').innerText = score;
+                    }
+                }
+                renderer.render(scene, camera);
+            }
+        }
+
+        function endGame() {
+            isGameOver = true;
+            document.getElementById('gameover').style.display = 'block';
+        }
+
+        function restartGame() {
+            obstacles.forEach(obj => scene.remove(obj));
+            obstacles = [];
+            score = 0;
+            currentLane = 1;
+            player.position.x = lanes[currentLane];
+            document.getElementById('score').innerText = score;
+            document.getElementById('gameover').style.display = 'none';
+            isGameOver = false;
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+    </script>
+</body>
+</html>
+// Player ના ગુણધર્મો (Properties)
+const player = {
+    x: 50,
+    y: 200,
+    width: 30,
+    height: 30,
+    color: '#FF0000', // લાલ રંગનો પ્લેયર
+    speed: 5
+};
+
+// Player ને સ્ક્રીન પર દોરવાનું Function
+function drawPlayer() {
+    ctx.fillStyle = player.color;
+    ctx.fillRect(player.x, player.y, player.width, player.height);
+}
+
+// Game Loop ની અંદર drawPlayer() કોલ કરો
+function gameLoop() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height); // સ્ક્રીન સાફ કરવા માટે
+    drawPlayer(); // પ્લેયર ડ્રો કરવા માટે
+    requestAnimationFrame(gameLoop);
+}
+
+gameLoop();
