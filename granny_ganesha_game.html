@@ -1,0 +1,125 @@
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    wall.position.set(x, y, z);
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    scene.add(wall);
+}
+
+function createCustomObject(x, y, z, w, h, d, color, name) {
+    let obj = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({ color: color })
+    );
+    obj.position.set(x, y, z);
+    obj.castShadow = true;
+    obj.userData = { name: name };
+    scene.add(obj);
+    return obj;
+}
+
+function fireAction() {
+    if (hasGun) {
+        alert("💥 પ્લેયરે ગનથી ફાયર કર્યું!");
+    } else {
+        alert("⚠️ પહેલા મેપમાંથી ગ્રેનીની ગન શોધીને ઉઠાવો!");
+    }
+}
+
+// સ્ક્રીન ફ્રી રોટેશન કંટ્રોલ્સ (બધી બાજુ સ્ક્રીન ફેરવી શકાશે)
+function setupFreeLookControls() {
+    window.addEventListener('touchstart', (e) => {
+        isDragging = true;
+        previousTouch.x = e.touches[0].clientX;
+        previousTouch.y = e.touches[0].clientY;
+    });
+    window.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        let touch = e.touches[0];
+        cameraAngleX -= (touch.clientX - previousTouch.x) * 0.008;
+        cameraAngleY += (touch.clientY - previousTouch.y) * 0.008;
+        cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2.2, cameraAngleY));
+        previousTouch.x = touch.clientX;
+        previousTouch.y = touch.clientY;
+    });
+    window.addEventListener('touchend', () => { isDragging = false; });
+}
+
+function setupJoystick() {
+    const joystick = nipplejs.create({
+        zone: document.getElementById('joystickZone'),
+        mode: 'static',
+        position: { left: '60px', bottom: '60px' },
+        color: 'white',
+        size: 100
+    });
+    joystick.on('move', (evt, data) => {
+        if (data.vector) { moveVector.x = data.vector.x; moveVector.y = data.vector.y; }
+    });
+    joystick.on('end', () => { moveVector.x = 0; moveVector.y = 0; });
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    let speed = 0.16;
+    if (moveVector.x !== 0 || moveVector.y !== 0) {
+        let newX = myPlayerMesh.position.x + moveVector.x * speed;
+        let newZ = myPlayerMesh.position.z - moveVector.y * speed;
+        if (Math.abs(newX) < 28.5) myPlayerMesh.position.x = newX;
+        if (Math.abs(newZ) < 28.5) myPlayerMesh.position.z = newZ;
+    }
+
+    // ગન કલેક્ટ
+    gunsArray.forEach((g) => {
+        if (g.visible && myPlayerMesh.position.distanceTo(g.position) < 1.5) {
+            g.visible = false;
+            hasGun = true;
+            document.getElementById("gunStatus").innerText = "હા (Ready)";
+            alert("🔫 તમને ગ્રેનીની ગન મળી ગઈ!");
+        }
+    });
+
+    // ચાવી કલેક્ટ
+    keysArray.forEach((k) => {
+        if (k.visible && myPlayerMesh.position.distanceTo(k.position) < 1.5) {
+            k.visible = false;
+            keysCollected++;
+            document.getElementById("keyCount").innerText = keysCollected;
+        }
+    });
+
+    // એસ્કેપ ચેક
+    if (keysCollected >= 20) {
+        escapePoints.forEach((ep) => {
+            if (myPlayerMesh.position.distanceTo(ep.position) < 3.0) {
+                alert("🎉 અભિનંદન! તમે " + ep.userData.name + " દ્વારા સફળતાપૂર્વક એસ્કેપ કરી લીધું!");
+                location.reload();
+            }
+        });
+    }
+
+    // કેમેરા પોઝિશન અને રોટેશન
+    let camDistance = 12;
+    camera.position.x = myPlayerMesh.position.x + camDistance * Math.sin(cameraAngleX) * Math.cos(cameraAngleY);
+    camera.position.y = myPlayerMesh.position.y + camDistance * Math.sin(cameraAngleY);
+    camera.position.z = myPlayerMesh.position.z + camDistance * Math.cos(cameraAngleX) * Math.cos(cameraAngleY);
+    camera.lookAt(myPlayerMesh.position);
+
+    // ડેટા સિંક (દરેક ફ્રેન્ડની યુનિક આઈડી સાથે)
+    conn.forEach(c => {
+        if (c && c.open) {
+            c.send({
+                id: myUniqueId,
+                x: myPlayerMesh.position.x,
+                y: myPlayerMesh.position.y,
+                z: myPlayerMesh.position.z,
+                color: myPlayerMesh.material.color.getHex()
+            });
+        }
+    });
+
+    renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
