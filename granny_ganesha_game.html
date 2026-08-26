@@ -1,3 +1,432 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D Granny Monster - Gemini AI & Multiplayer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+    <style>
+        * { user-select: none; box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #111; color: #fff; font-family: Arial, sans-serif; overflow: hidden; }
+        
+        #lobby {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        input, select, button {
+            padding: 12px; margin: 8px; font-size: 16px; border-radius: 8px; border: none;
+        }
+        input, select { width: 280px; text-align: center; background: #222; color: #fff; border: 1px solid #444; }
+        button { background: #8b0000; color: white; font-weight: bold; cursor: pointer; }
+
+        #ui {
+            position: absolute; top: 10px; left: 10px; z-index: 10;
+            color: #fff; font-size: 15px; font-weight: bold;
+            text-shadow: 1px 1px 2px #000; pointer-events: none;
+        }
+
+        #actionBtn {
+            position: absolute; bottom: 30px; right: 30px;
+            width: 75px; height: 75px; background: #ff3300; color: white;
+            border-radius: 50%; border: 3px solid #fff; font-weight: bold;
+            font-size: 14px; display: flex; align-items: center; justify-content: center;
+            z-index: 30; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        #pickupBtn {
+            position: absolute; bottom: 120px; right: 35px;
+            width: 65px; height: 65px; background: #00aa00; color: white;
+            border-radius: 50%; border: 3px solid #fff; font-weight: bold;
+            font-size: 24px; display: flex; align-items: center; justify-content: center;
+            z-index: 30; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        #joystickZone {
+            position: absolute; bottom: 20px; left: 20px;
+            width: 120px; height: 120px; z-index: 20;
+        }
+
+        #idDisplayBox {
+            background: rgba(255,255,255,0.05); padding: 10px; border-radius: 8px;
+            margin-top: 10px; border: 1px solid #8b0000; text-align: center;
+        }
+    </style>
+</head>
+<body>
+
+<div id="lobby">
+    <h2 style="color: #ff4500; margin-bottom: 10px;">👹 3D મોન્સ્ટર ગ્રેની & જેમિની રૂમ 👹</h2>
+    <input type="text" id="playerName" placeholder="તમારું નામ (Player Name)">
+    <input type="text" id="targetPeerId" placeholder="ફ્રેન્ડની આઈડી નાખો (જોઈન થવા)">
+    
+    <button onclick="startHost()">૧. રૂમ બનાવો (Host)</button>
+    <button onclick="connectPeer()">૨. ફ્રેન્ડ સાથે જોડાઓ (Join)</button>
+    
+    <div id="idDisplayBox">
+        <p style="color: #aaa; font-size: 13px;">તમારી આઈડી:</p>
+        <span id="myIdText" style="color: #00ff00; font-size: 18px; font-weight: bold;">બની નથી...</span>
+    </div>
+</div>
+
+<div id="ui">
+    🔑 ચાવીઓ: <span id="keyCount">0</span> / 20 | 🔫 ગન: <span id="gunStatus">નથી</span>
+    <br><span id="status" style="color:#00ff00;"></span>
+</div>
+
+<div id="joystickZone"></div>
+<button id="pickupBtn" onclick="pickupItem()">✋</button>
+<button id="actionBtn" onclick="fireAction()">ફાયર!</button>
+
+<script>
+let peer, conn = [];
+let myUniqueId = "";
+let isHost = false;
+let myPlayerMesh;
+let otherPlayers = {};
+let playerColors = [0x550000, 0x003355, 0x330033, 0x333300];
+
+function initPeer(callback) {
+    let inputName = document.getElementById("playerName").value.trim() || "MonsterPlayer";
+    myUniqueId = inputName + "_" + Math.floor(1000 + Math.random() * 9000);
+    
+    peer = new Peer(myUniqueId);
+    peer.on('open', (id) => {
+        myUniqueId = id;
+        document.getElementById("myIdText").innerText = id;
+        if(callback) callback();
+    });
+    peer.on('connection', (c) => {
+        conn.push(c);
+        setupConnection(c);
+    });
+}
+
+function startHost() {
+    initPeer(() => {
+        isHost = true;
+        document.getElementById("lobby").style.display = "none";
+        init3DGame();
+    });
+}
+
+function connectPeer() {
+    initPeer(() => {
+        isHost = false;
+        let target = document.getElementById("targetPeerId").value.trim();
+        if(!target) return alert("ફ્રેન્ડની આઈડી નાખો!");
+        let c = peer.connect(target);
+        conn.push(c);
+        setupConnection(c);
+        document.getElementById("lobby").style.display = "none";
+        init3DGame();
+    });
+}
+
+function setupConnection(c) {
+    document.getElementById("status").innerText = "કનેક્ટ થઈ ગયું!";
+    c.on('data', (data) => {
+        if (!otherPlayers[data.id]) {
+            let monsterGroup = createMonsterCharacter(data.color);
+            monsterGroup.position.set(data.x, data.y, data.z);
+            scene.add(monsterGroup);
+            otherPlayers[data.id] = monsterGroup;
+        } else {
+            otherPlayers[data.id].position.set(data.x, data.y, data.z);
+        }
+    });
+}
+
+// --- THREE.JS 3D ENGINE ---
+let scene, camera, renderer;
+let moveVector = { x: 0, y: 0 };
+let keysCollected = 0;
+let keysArray = [];
+let gunsArray = [];
+let hasGun = false;
+let escapePoints = [];
+let stairsArray = [];
+let geminiRoom;
+
+let isDragging = false;
+let previousTouch = { x: 0, y: 0 };
+let cameraAngleX = 0;
+let cameraAngleY = 0.4;
+
+function init3DGame() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0a0a0a);
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    const sunLight = new THREE.DirectionalLight(0xff4500, 1.2);
+    sunLight.position.set(30, 50, 30);
+    sunLight.castShadow = true;
+    scene.add(sunLight);
+    scene.add(new THREE.AmbientLight(0x333333, 1.0));
+
+    // જમીન
+    const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(60, 60),
+        new THREE.MeshStandardMaterial({ color: 0x1f1f1f, roughness: 0.8 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // બીજો માળ
+    const upperFloor = new THREE.Mesh(
+        new THREE.BoxGeometry(30, 0.4, 30),
+        new THREE.MeshStandardMaterial({ color: 0x2d2d2d })
+    );
+    upperFloor.position.set(0, 5, 0);
+    scene.add(upperFloor);
+
+    // દાદરા
+    const stairMat = new THREE.MeshStandardMaterial({ color: 0x4a2e18 });
+    for (let i = 0; i < 10; i++) {
+        let step = new THREE.Mesh(new THREE.BoxGeometry(4, 0.5, 1), stairMat);
+        step.position.set(-12, 0.25 + (i * 0.5), 10 - (i * 1));
+        scene.add(step);
+        stairsArray.push(step);
+    }
+
+    // દીવાલો
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x3b3b3b });
+    createWall(0, 3, -30, 60, 6, 1, wallMat);
+    createWall(0, 3, 30, 60, 6, 1, wallMat);
+    createWall(-30, 3, 0, 1, 6, 60, wallMat);
+    createWall(30, 3, 0, 1, 6, 60, wallMat);
+
+    // સિક્રેટ રૂમ્સ
+    createWall(18, 3, -15, 12, 6, 1, wallMat);
+    createWall(12, 3, -22, 1, 6, 14, wallMat);
+    createWall(-18, 3, -15, 12, 6, 1, wallMat);
+    createWall(-12, 3, -22, 1, 6, 14, wallMat);
+    createWall(5, 8, 5, 10, 5, 1, wallMat);
+
+    // 🤖 જેમિની એડવાઈઝ રૂમ
+    geminiRoom = createCustomObject(-10, 6, -10, 6, 4, 6, 0x0055ff, "જેમિની રૂમ");
+
+    // ગન રૂમમાં ગન
+    let gunMat = new THREE.MeshStandardMaterial({ color: 0x111111 });
+    let g1 = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.3, 0.3), gunMat);
+    g1.position.set(5, 5.5, 8);
+    scene.add(g1);
+    gunsArray.push(g1);
+
+    // એસ્કેપ પોઈન્ટ્સ
+    let mainDoor = createCustomObject(0, 2, -29, 4, 4, 0.5, 0x8B4513, "મેઈન ગેટ");
+    let bus = createCustomObject(0, 1.5, 29, 4, 3, 6, 0x0000ff, "બસ");
+    let train = createCustomObject(-29, 1.5, 0, 6, 3, 4, 0x808080, "ટ્રેન");
+    let chopper = createCustomObject(29, 2, 0, 5, 2, 5, 0x00ff00, "હેલિકોપ્ટર");
+    let boat = createCustomObject(-20, 0.5, -20, 3, 1, 5, 0x5c4033, "બોટ");
+    escapePoints = [mainDoor, bus, train, chopper, boat];
+
+    // ૨૦ ચાવીઓ
+    const keyMat = new THREE.MeshStandardMaterial({ color: 0xffd700, emissive: 0x554400 });
+    for (let i = 0; i < 20; i++) {
+        let k = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), keyMat);
+        k.position.set((Math.random() - 0.5) * 45, 0.5, (Math.random() - 0.5) * 45);
+        scene.add(k);
+        keysArray.push(k);
+    }
+
+    // 👹 મોન્સ્ટર પ્લેયર બનાવો
+    let myColor = playerColors[Math.floor(Math.random() * playerColors.length)];
+    myPlayerMesh = createMonsterCharacter(myColor);
+    myPlayerMesh.position.set(0, 1, 0);
+    scene.add(myPlayerMesh);
+
+    setupJoystick();
+    setupFreeLookControls();
+    animate();
+}
+
+// 👹 મોન્સ્ટર ફેસ અને બોડી ડિઝાઇન ફંક્શન
+function createMonsterCharacter(bodyColorHex) {
+    const group = new THREE.Group();
+
+    // બોડી
+    const bodyMat = new THREE.MeshStandardMaterial({ color: bodyColorHex, roughness: 0.5 });
+    const body = new THREE.Mesh(new THREE.BoxGeometry(1.2, 1.8, 1.0), bodyMat);
+    body.position.y = 0.9;
+    body.castShadow = true;
+    group.add(body);
+
+    // મોન્સ્ટર માથું (Monster Head)
+    const headMat = new THREE.MeshStandardMaterial({ color: 0x4a4a4a, roughness: 0.3 });
+    const head = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 1.0), headMat);
+    head.position.y = 2.2;
+    head.castShadow = true;
+    group.add(head);
+
+    // લાલ ચમકતી ડરામણી આંખો (Red Glowing Eyes)
+    const eyeMat = new THREE.MeshBasicMaterial({ color: 0xff0000 });
+    const leftEye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.1), eyeMat);
+    leftEye.position.set(-0.25, 2.3, 0.51);
+    group.add(leftEye);
+
+    const rightEye = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.15, 0.1), eyeMat);
+    rightEye.position.set(0.25, 2.3, 0.51);
+    group.add(rightEye);
+
+    // ભયાનક દાંતવાળું મોં (Monster Mouth & Teeth)
+    const mouthMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
+    const teeth = new THREE.Mesh(new THREE.BoxGeometry(0.6, 0.15, 0.1), mouthMat);
+    teeth.position.set(0, 1.95, 0.51);
+    group.add(teeth);
+
+    return group;
+}
+
+function createWall(x, y, z, w, h, d, mat) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    wall.position.set(x, y, z);
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    scene.add(wall);
+}
+
+function createCustomObject(x, y, z, w, h, d, color, name) {
+    let obj = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({ color: color })
+    );
+    obj.position.set(x, y, z);
+    obj.userData = { name: name };
+    scene.add(obj);
+    return obj;
+}
+
+function pickupItem() {
+    let picked = false;
+    gunsArray.forEach((g) => {
+        if (g.visible && myPlayerMesh.position.distanceTo(g.position) < 3.0) {
+            g.visible = false;
+            hasGun = true;
+            picked = true;
+            document.getElementById("gunStatus").innerText = "હા (Ready)";
+            alert("✋ તમે ગન રૂમમાંથી ગન હાથ વડે ઉઠાવી લીધી!");
+        }
+    });
+    if(!picked) alert("⚠️ તમારી નજીક કોઈ ગન કે વસ્તુ નથી!");
+}
+
+function fireAction() {
+    if (hasGun) {
+        alert("💥 મોન્સ્ટરે ગનથી ફાયર કર્યું!");
+    } else {
+        alert("⚠️ પહેલા ગન રૂમમાં જઈને ✋ હાથના બટનથી ગન ઉઠાવો!");
+    }
+}
+
+function setupFreeLookControls() {
+    window.addEventListener('touchstart', (e) => {
+        isDragging = true;
+        previousTouch.x = e.touches[0].clientX;
+        previousTouch.y = e.touches[0].clientY;
+    });
+    window.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        let touch = e.touches[0];
+        cameraAngleX -= (touch.clientX - previousTouch.x) * 0.008;
+        cameraAngleY += (touch.clientY - previousTouch.y) * 0.008;
+        cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2.2, cameraAngleY));
+        previousTouch.x = touch.clientX;
+        previousTouch.y = touch.clientY;
+    });
+    window.addEventListener('touchend', () => { isDragging = false; });
+}
+
+function setupJoystick() {
+    const joystick = nipplejs.create({
+        zone: document.getElementById('joystickZone'),
+        mode: 'static',
+        position: { left: '60px', bottom: '60px' },
+        color: 'white',
+        size: 100
+    });
+    joystick.on('move', (evt, data) => {
+        if (data.vector) { moveVector.x = data.vector.x; moveVector.y = data.vector.y; }
+    });
+    joystick.on('end', () => { moveVector.x = 0; moveVector.y = 0; });
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    let speed = 0.16;
+    if (moveVector.x !== 0 || moveVector.y !== 0) {
+        let newX = myPlayerMesh.position.x + moveVector.x * speed;
+        let newZ = myPlayerMesh.position.z - moveVector.y * speed;
+        if (Math.abs(newX) < 28.5) myPlayerMesh.position.x = newX;
+        if (Math.abs(newZ) < 28.5) myPlayerMesh.position.z = newZ;
+    }
+
+    // દાદરા ચડવાની લોજિક
+    stairsArray.forEach((step) => {
+        if (myPlayerMesh.position.distanceTo(step.position) < 1.5) {
+            myPlayerMesh.position.y = step.position.y + 1.0;
+        }
+    });
+
+    // જેમિની રૂમની સલાહ ચેક કરવી
+    if (myPlayerMesh.position.distanceTo(geminiRoom.position) < 3.0) {
+        alert("🤖 જેમિની AI ની સલાહ: 'મોન્સ્ટરથી બચવા માટે સીધા સિક્રેટ રૂમમાં છુપાઈ જાઓ અથવા ગન રૂમમાંથી હથિયાર મેળવો!'");
+        myPlayerMesh.position.x -= 2;
+    }
+
+    // ચાવીઓ કલેક્ટ કરવી
+    keysArray.forEach((k) => {
+        if (k.visible && myPlayerMesh.position.distanceTo(k.position) < 1.5) {
+            k.visible = false;
+            keysCollected++;
+            document.getElementById("keyCount").innerText = keysCollected;
+        }
+    });
+
+    // એસ્કેપ ચેક
+    if (keysCollected >= 20) {
+        escapePoints.forEach((ep) => {
+            if (myPlayerMesh.position.distanceTo(ep.position) < 3.0) {
+                alert("🎉 અભિનંદન! તમે " + ep.userData.name + " દ્વારા મોન્સ્ટરની નજરોથી બચીને સફળ એસ્કેપ કર્યું!");
+                location.reload();
+            }
+        });
+    }
+
+    // કેમેરા ગતિ
+    let camDistance = 12;
+    camera.position.x = myPlayerMesh.position.x + camDistance * Math.sin(cameraAngleX) * Math.cos(cameraAngleY);
+    camera.position.y = myPlayerMesh.position.y + camDistance * Math.sin(cameraAngleY);
+    camera.position.z = myPlayerMesh.position.z + camDistance * Math.cos(cameraAngleX) * Math.cos(cameraAngleY);
+    camera.lookAt(myPlayerMesh.position.x, myPlayerMesh.position.y + 1, myPlayerMesh.position.z);
+
+    // ડેટા સિંક
+    conn.forEach(c => {
+        if (c && c.open) {
+            c.send({
+                id: myUniqueId,
+                x: myPlayerMesh.position.x,
+                y: myPlayerMesh.position.y,
+                z: myPlayerMesh.position.z,
+                color: 0x550000
+            });
+        }
+    });
+
+    renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
     const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
     wall.position.set(x, y, z);
     wall.castShadow = true;
