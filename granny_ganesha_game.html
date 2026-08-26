@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D Granny Action - Guns, Escape & Multiplayer</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/nipplejs/0.10.1/nipplejs.min.js"></script>
+    <style>
+        * { user-select: none; box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #111; color: #fff; font-family: Arial, sans-serif; overflow: hidden; }
+        
+        #lobby {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.95); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        input, select, button {
+            padding: 12px; margin: 8px; font-size: 16px; border-radius: 8px; border: none;
+        }
+        input, select { width: 260px; text-align: center; }
+        button { background: #ff0000; color: white; font-weight: bold; cursor: pointer; }
+
+        #ui {
+            position: absolute; top: 10px; left: 10px; z-index: 10;
+            color: #ffd700; font-size: 15px; font-weight: bold;
+            text-shadow: 2px 2px 4px #000; pointer-events: none;
+        }
+
+        #actionBtn {
+            position: absolute; bottom: 30px; right: 30px;
+            width: 80px; height: 80px; background: #ff3300; color: white;
+            border-radius: 50%; border: 3px solid #fff; font-weight: bold;
+            font-size: 14px; display: flex; align-items: center; justify-content: center;
+            z-index: 30; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.5);
+        }
+
+        #joystickZone {
+            position: absolute; bottom: 20px; left: 20px;
+            width: 120px; height: 120px; z-index: 20;
+        }
+    </style>
+</head>
+<body>
+
+<div id="lobby">
+    <h2 style="color: #ffd700; margin-bottom: 10px;">🔥 3D ગ્રેની એક્શન - ગન્સ & એસ્કેપ 🔥</h2>
+    <input type="text" id="playerName" placeholder="તમારું ID Name">
+    <input type="text" id="targetPeerId" placeholder="હોસ્ટ ફ્રેન્ડનું ID (જોઈન થવા)">
+    
+    <label style="color:#aaa; font-size:14px; margin-top:5px;">મિત્રોની સંખ્યા (3 થી 9):</label>
+    <select id="maxPlayers">
+        <option value="3">૩ મિત્રો</option>
+        <option value="6">૬ મિત્રો</option>
+        <option value="9" selected>૯ મિત્રો (Max)</option>
+    </select>
+
+    <button onclick="startHost()">૧. એક્શન રૂમ બનાવો (Host)</button>
+    <button onclick="connectPeer()">૨. ફ્રેન્ડ સાથે જોડાઓ (Join)</button>
+    <p id="myIdText" style="margin-top: 15px; color: #00ff00;"></p>
+</div>
+
+<div id="ui">
+    🔑 ચાવીઓ: <span id="keyCount">0</span> / 20 | 🔫 ગન: <span id="gunStatus">નથી</span>
+    <br><span id="status" style="color:#00ff00;"></span>
+</div>
+
+<div id="joystickZone"></div>
+<button id="actionBtn" onclick="fireAction()">ફાયર!</button>
+
+<script>
+let peer, conn = [];
+let myPlayerName = "";
+let isHost = false;
+let myPlayerMesh;
+let otherPlayers = {};
+let playerColors = [0x00ff00, 0x00ffff, 0xff00ff, 0xffff00, 0xff8000, 0x0080ff, 0xff0080, 0x80ff00, 0xffffff];
+
+function initPeer() {
+    myPlayerName = document.getElementById("playerName").value || "Player_" + Math.floor(Math.random()*1000);
+    peer = new Peer(myPlayerName);
+    peer.on('open', (id) => {
+        document.getElementById("myIdText").innerText = "તમારું ID: " + id;
+    });
+    peer.on('connection', (c) => {
+        conn.push(c);
+        setupConnection(c);
+    });
+}
+
+function startHost() {
+    isHost = true;
+    initPeer();
+    document.getElementById("lobby").style.display = "none";
+    init3DGame();
+}
+
+function connectPeer() {
+    isHost = false;
+    initPeer();
+    let target = document.getElementById("targetPeerId").value;
+    setTimeout(() => {
+        let c = peer.connect(target);
+        conn.push(c);
+        setupConnection(c);
+        document.getElementById("lobby").style.display = "none";
+        init3DGame();
+    }, 1000);
+}
+
+function setupConnection(c) {
+    document.getElementById("status").innerText = "એક્શન ફ્રેન્ડ્સ કનેક્ટ!";
+    c.on('data', (data) => {
+        if (!otherPlayers[data.name]) {
+            const pGeo = new THREE.BoxGeometry(1.2, 2, 1.2);
+            let mesh = new THREE.Mesh(pGeo, new THREE.MeshStandardMaterial({ color: data.color }));
+            mesh.position.set(data.x, data.y, data.z);
+            scene.add(mesh);
+            otherPlayers[data.name] = mesh;
+        } else {
+            otherPlayers[data.name].position.set(data.x, data.y, data.z);
+        }
+    });
+}
+
+// --- THREE.JS 3D ENGINE ---
+let scene, camera, renderer;
+let moveVector = { x: 0, y: 0 };
+let keysCollected = 0;
+let keysArray = [];
+let gunsArray = [];
+let hasGun = false;
+let escapePoints = [];
+
+let isDragging = false;
+let previousTouch = { x: 0, y: 0 };
+let cameraAngleX = 0;
+let cameraAngleY = 0.4;
+
+function init3DGame() {
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x333333); // ડાર્ક હોરર એક્શન લુક
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true;
+    document.body.appendChild(renderer.domElement);
+
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+    sunLight.position.set(20, 40, 20);
+    sunLight.castShadow = true;
+    scene.add(sunLight);
+    scene.add(new THREE.AmbientLight(0x404040));
+
+    // જમીન
+    const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(60, 60),
+        new THREE.MeshStandardMaterial({ color: 0x222222 })
+    );
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // બહારની બોર્ડર
+    const wallMat = new THREE.MeshStandardMaterial({ color: 0x5c3a21 });
+    createWall(0, 3, -30, 60, 6, 1, wallMat);
+    createWall(0, 3, 30, 60, 6, 1, wallMat);
+    createWall(-30, 3, 0, 1, 6, 60, wallMat);
+    createWall(30, 3, 0, 1, 6, 60, wallMat);
+
+    // --- ગ્રેનીનું મોં અને ખતરનાક ચેહરો (Granny Boss Head) ---
+    let grannyHead = new THREE.Mesh(
+        new THREE.SphereGeometry(2, 16, 16),
+        new THREE.MeshStandardMaterial({ color: 0xff4444, roughness: 0.2 })
+    );
+    grannyHead.position.set(0, 2, 0);
+    scene.add(grannyHead);
+
+    // --- ૫ એસ્કેપ પોઈન્ટ્સ ---
+    let mainDoor = createCustomObject(0, 2, -29, 4, 4, 0.5, 0x8B4513, "મેઈન ગેટ");
+    let bus = createCustomObject(0, 1.5, 29, 4, 3, 6, 0x0000ff, "બસ");
+    let train = createCustomObject(-29, 1.5, 0, 6, 3, 4, 0x808080, "ટ્રેન");
+    let chopper = createCustomObject(29, 2, 0, 5, 2, 5, 0x00ff00, "હેલિકોપ્ટર");
+    let boat = createCustomObject(-20, 0.5, -20, 3, 1, 5, 0x5c4033, "બોટ");
+    escapePoints = [mainDoor, bus, train, chopper, boat];
+
+    // --- ૩ ગ્રેની ગન (Granny Guns to Collect) ---
+    let gunMat = new THREE.MeshStandardMaterial({ color: 0x333333, metalness: 0.9 });
+    let gunPositions = [{x: 10, z: 10}, {x: -10, z: 10}, {x: 0, z: -15}];
+    gunPositions.forEach(gp => {
+        let gun = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.4, 0.4), gunMat);
+        gun.position.set(gp.x, 0.5, gp.z);
+        scene.add(gun);
+        gunsArray.push(gun);
+    });
+
+    // --- ૨૦ ચાવીઓ ---
+    const keyMat = new THREE.MeshStandardMaterial({ color: 0xffd700 });
+    for (let i = 0; i < 20; i++) {
+        let k = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), keyMat);
+        k.position.set((Math.random() - 0.5) * 45, 0.5, (Math.random() - 0.5) * 45);
+        scene.add(k);
+        keysArray.push(k);
+    }
+
+    // પ્લેયર
+    let myColor = playerColors[Math.floor(Math.random() * playerColors.length)];
+    myPlayerMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(1.2, 2, 1.2),
+        new THREE.MeshStandardMaterial({ color: myColor })
+    );
+    myPlayerMesh.position.set(5, 1, 5); // શરૂઆત એક્શન ઝોન
+    myPlayerMesh.castShadow = true;
+    scene.add(myPlayerMesh);
+
+    setupJoystick();
+    setupFreeLookControls();
+    animate();
+}
+
+function createWall(x, y, z, w, h, d, mat) {
+    const wall = new THREE.Mesh(new THREE.BoxGeometry(w, h, d), mat);
+    wall.position.set(x, y, z);
+    wall.castShadow = true;
+    wall.receiveShadow = true;
+    scene.add(wall);
+}
+
+function createCustomObject(x, y, z, w, h, d, color, name) {
+    let obj = new THREE.Mesh(
+        new THREE.BoxGeometry(w, h, d),
+        new THREE.MeshStandardMaterial({ color: color })
+    );
+    obj.position.set(x, y, z);
+    obj.castShadow = true;
+    obj.userData = { name: name };
+    scene.add(obj);
+    return obj;
+}
+
+// ફાયર એક્શન બટન
+function fireAction() {
+    if (hasGun) {
+        alert("💥 પ્લેયરે ગનથી ફાયર કર્યું! દુશ્મન દૂર ભાગ્યો!");
+    } else {
+        alert("⚠️ પહેલા મેપમાંથી ગ્રેનીની ગન શોધીને ઉઠાવો!");
+    }
+}
+
+function setupFreeLookControls() {
+    window.addEventListener('touchstart', (e) => {
+        if (e.touches[0].clientX > window.innerWidth / 2) {
+            isDragging = true;
+            previousTouch.x = e.touches[0].clientX;
+            previousTouch.y = e.touches[0].clientY;
+        }
+    });
+    window.addEventListener('touchmove', (e) => {
+        if (!isDragging) return;
+        let touch = e.touches[0];
+        cameraAngleX -= (touch.clientX - previousTouch.x) * 0.005;
+        cameraAngleY += (touch.clientY - previousTouch.y) * 0.005;
+        cameraAngleY = Math.max(0.1, Math.min(Math.PI / 2.3, cameraAngleY));
+        previousTouch.x = touch.clientX;
+        previousTouch.y = touch.clientY;
+    });
+    window.addEventListener('touchend', () => { isDragging = false; });
+}
+
+function setupJoystick() {
+    const joystick = nipplejs.create({
+        zone: document.getElementById('joystickZone'),
+        mode: 'static',
+        position: { left: '60px', bottom: '60px' },
+        color: 'white',
+        size: 100
+    });
+    joystick.on('move', (evt, data) => {
+        if (data.vector) { moveVector.x = data.vector.x; moveVector.y = data.vector.y; }
+    });
+    joystick.on('end', () => { moveVector.x = 0; moveVector.y = 0; });
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    let speed = 0.16;
+    if (moveVector.x !== 0 || moveVector.y !== 0) {
+        let newX = myPlayerMesh.position.x + moveVector.x * speed;
+        let newZ = myPlayerMesh.position.z - moveVector.y * speed;
+        if (Math.abs(newX) < 28.5) myPlayerMesh.position.x = newX;
+        if (Math.abs(newZ) < 28.5) myPlayerMesh.position.z = newZ;
+    }
+
+    // ગન કલેક્ટ કરવી
+    gunsArray.forEach((g) => {
+        if (g.visible && myPlayerMesh.position.distanceTo(g.position) < 1.5) {
+            g.visible = false;
+            hasGun = true;
+            document.getElementById("gunStatus").innerText = "ਹਾਂ (Ready)";
+            alert("🔫 તમને ગ્રેનીની ગન મળી ગઈ! હવે 'ફાયર' બટન દબાવો.");
+        }
+    });
+
+    // ચાવીઓ કલેક્ટ કરવી
+    keysArray.forEach((k) => {
+        if (k.visible && myPlayerMesh.position.distanceTo(k.position) < 1.5) {
+            k.visible = false;
+            keysCollected++;
+            document.getElementById("keyCount").innerText = keysCollected;
+        }
+    });
+
+    // એસ્કેપ ચેક
+    if (keysCollected >= 20) {
+        escapePoints.forEach((ep) => {
+            if (myPlayerMesh.position.distanceTo(ep.position) < 3.0) {
+                alert("🎉 અભિનંદન! તમે " + ep.userData.name + " દ્વારા સફળતાપૂર્વક એસ્કેપ કરી લીધું!");
+                location.reload();
+            }
+        });
+    }
+
+    // કેમેરા પોઝિશન
+    let camDistance = 12;
+    camera.position.x = myPlayerMesh.position.x + camDistance * Math.sin(cameraAngleX) * Math.cos(cameraAngleY);
+    camera.position.y = myPlayerMesh.position.y + camDistance * Math.sin(cameraAngleY);
+    camera.position.z = myPlayerMesh.position.z + camDistance * Math.cos(cameraAngleX) * Math.cos(cameraAngleY);
+    camera.lookAt(myPlayerMesh.position);
+
+    // ડેટા સિંક
+    conn.forEach(c => {
+        if (c && c.open) {
+            c.send({
+                name: myPlayerName,
+                x: myPlayerMesh.position.x,
+                y: myPlayerMesh.position.y,
+                z: myPlayerMesh.position.z,
+                color: myPlayerMesh.material.color.getHex()
+            });
+        }
+    });
+
+    renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
