@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>3D ભાગ યુટ્યુબર ભાગ</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: Arial, sans-serif; user-select: none; }
+        
+        /* Top UI Header */
+        #ui { position: absolute; top: 10px; left: 10px; color: #111; font-size: 18px; font-weight: bold; z-index: 10; background: rgba(255,255,255,0.85); padding: 8px 15px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0,0,0,0.2); }
+        
+        /* Game Over Screen & Restart Button */
+        #gameover { display: none; position: absolute; top: 40%; left: 50%; transform: translate(-50%, -50%); color: #ff0055; font-size: 36px; text-align: center; font-weight: bold; z-index: 20; text-shadow: 2px 2px 8px #fff; background: rgba(255, 255, 255, 0.9); padding: 20px 30px; border-radius: 12px; border: 3px solid #ff0055; }
+        #restartBtn { display: block; margin: 15px auto 0 auto; padding: 10px 20px; font-size: 20px; font-weight: bold; color: #fff; background: #ff0055; border: none; border-radius: 8px; cursor: pointer; box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+        #restartBtn:active { background: #cc0044; transform: scale(0.95); }
+        
+        /* Controls UI */
+        .controls { position: absolute; bottom: 20px; width: 100%; display: flex; justify-content: space-around; padding: 0 20px; box-sizing: border-box; z-index: 10; }
+        .btn { width: 65px; height: 65px; background: rgba(255, 255, 255, 0.75); border: 3px solid #111; border-radius: 50%; font-size: 26px; font-weight: bold; color: #111; display: flex; align-items: center; justify-content: center; cursor: pointer; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        .btn:active { background: rgba(0, 0, 0, 0.4); color: #fff; }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+</head>
+<body>
+    <div id="ui">
+        🎬 YouTuber: <span id="ytName">યુઝર</span><br>
+        ⭐ Score: <span id="score">0</span>
+    </div>
+    
+    <div id="gameover">
+        GAME OVER!
+        <button id="restartBtn">Restart Game 🔄</button>
+    </div>
+
+    <!-- Controls -->
+    <div class="controls">
+        <div class="btn" id="leftBtn">⬅️</div>
+        <div class="btn" id="jumpBtn">⬆️</div>
+        <div class="btn" id="slideBtn">⬇️</div>
+        <div class="btn" id="rightBtn">➡️</div>
+    </div>
+
+    <script>
+        let YouTuberName = prompt("તમારું અથવા તમારા મનપસંદ YouTuber નું નામ લખો:", "Himesh") || "YouTuber";
+        document.getElementById('ytName').innerText = YouTuberName;
+
+        let scene, camera, renderer, player, obstacles = [], decorations = [], score = 0, isGameOver = false;
+        let lanes = [-2.2, 0, 2.2];
+        let currentLane = 1;
+
+        let isJumping = false, jumpVelocity = 0, gravity = -0.018;
+        let isSliding = false, slideTimer = 0;
+
+        function init() {
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x87CEEB);
+
+            camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+            camera.position.set(0, 3.8, 7);
+            camera.lookAt(0, 1, 0);
+
+            renderer = new THREE.WebGLRenderer({ antialias: true });
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            document.body.appendChild(renderer.domElement);
+
+            const sunLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            sunLight.position.set(10, 20, 10);
+            scene.add(sunLight);
+            scene.add(new THREE.AmbientLight(0xffffff, 0.6));
+
+            const grassGeometry = new THREE.PlaneGeometry(100, 100);
+            const grassMaterial = new THREE.MeshLambertMaterial({ color: 0x4CA64C });
+            const grass = new THREE.Mesh(grassGeometry, grassMaterial);
+            grass.rotation.x = -Math.PI / 2;
+            scene.add(grass);
+
+            const roadGeometry = new THREE.PlaneGeometry(8, 100);
+            const roadMaterial = new THREE.MeshLambertMaterial({ color: 0x333333 });
+            const road = new THREE.Mesh(roadGeometry, roadMaterial);
+            road.rotation.x = -Math.PI / 2;
+            road.position.z = -40;
+            scene.add(road);
+
+            const playerGeo = new THREE.BoxGeometry(0.8, 1.4, 0.8);
+            const playerMat = new THREE.MeshLambertMaterial({ color: 0x0055FF });
+            player = new THREE.Mesh(playerGeo, playerMat);
+            player.position.set(lanes[currentLane], 0.7, 0);
+            scene.add(player);
+
+            window.addEventListener('keydown', handleInput);
+            window.addEventListener('resize', onWindowResize);
+
+            document.getElementById('leftBtn').addEventListener('pointerdown', moveLeft);
+            document.getElementById('rightBtn').addEventListener('pointerdown', moveRight);
+            document.getElementById('jumpBtn').addEventListener('pointerdown', jump);
+            document.getElementById('slideBtn').addEventListener('pointerdown', slide);
+            document.getElementById('restartBtn').addEventListener('click', restartGame);
+
+            animate();
+        }
+
+        function spawnTrain() {
+            if (isGameOver) return;
+            const lane = lanes[Math.floor(Math.random() * 3)];
+            const trainGeo = new THREE.BoxGeometry(1.6, 2.2, 8);
+            const trainMat = new THREE.MeshLambertMaterial({ color: 0xCC0000 });
+            const train = new THREE.Mesh(trainGeo, trainMat);
+            train.position.set(lane, 1.1, -60);
+            scene.add(train);
+            obstacles.push({ mesh: train });
+        }
+
+        function spawnDecoration() {
+            if (isGameOver) return;
+            const side = Math.random() > 0.5 ? 6 : -6;
+            const tree = new THREE.Group();
+            const trunkMat = new THREE.MeshLambertMaterial({ color: 0x8B4513 });
+            const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 2), trunkMat);
+            trunk.position.y = 1;
+            tree.add(trunk);
+
+            const leavesMat = new THREE.MeshLambertMaterial({ color: 0x228B22 });
+            const leaves = new THREE.Mesh(new THREE.ConeGeometry(1.2, 3, 6), leavesMat);
+            leaves.position.y = 3;
+            tree.add(leaves);
+
+            tree.position.set(side, 0, -60);
+            scene.add(tree);
+            decorations.push(tree);
+        }
+
+        setInterval(spawnTrain, 1600);
+        setInterval(spawnDecoration, 800);
+
+        function moveLeft() { if (!isGameOver && currentLane > 0) currentLane--; }
+        function moveRight() { if (!isGameOver && currentLane < 2) currentLane++; }
+
+        function jump() {
+            if (!isGameOver && !isJumping) {
+                isJumping = true;
+                jumpVelocity = 0.35;
+            }
+        }
+
+        function slide() {
+            if (!isGameOver && !isSliding) {
+                isSliding = true;
+                slideTimer = 35;
+                player.scale.set(1, 0.5, 1);
+            }
+        }
+
+        function handleInput(e) {
+            if (isGameOver && e.code === 'Space') restartGame();
+            if (e.key === 'ArrowLeft') moveLeft();
+            if (e.key === 'ArrowRight') moveRight();
+            if (e.key === 'ArrowUp') jump();
+            if (e.key === 'ArrowDown') slide();
+        }
+
+        function animate() {
+            if (!isGameOver) {
+                requestAnimationFrame(animate);
+
+                player.position.x += (lanes[currentLane] - player.position.x) * 0.2;
+
+                if (isJumping) {
+                    player.position.y += jumpVelocity;
+                    jumpVelocity += gravity;
+                    if (player.position.y <= 0.7) {
+                        player.position.y = 0.7;
+                        isJumping = false;
+                    }
+                }
+
+                if (isSliding) {
+                    slideTimer--;
+                    if (slideTimer <= 0) {
+                        player.scale.set(1, 1, 1);
+                        isSliding = false;
+                    }
+                }
+
+                for (let i = 0; i < decorations.length; i++) {
+                    decorations[i].position.z += 0.45;
+                    if (decorations[i].position.z > 10) {
+                        scene.remove(decorations[i]);
+                        decorations.splice(i, 1);
+                    }
+                }
+
+                for (let i = 0; i < obstacles.length; i++) {
+                    let obj = obstacles[i];
+                    obj.mesh.position.z += 0.45;
+
+                    let pZ = player.position.z;
+                    let pX = player.position.x;
+                    let pY = player.position.y;
+                    let oZ = obj.mesh.position.z;
+                    let oX = obj.mesh.position.x;
+
+                    if (Math.abs(oZ - pZ) < 4 && Math.abs(oX - pX) < 1.0 && pY < 2.0) {
+                        endGame();
+                    }
+
+                    if (obj.mesh.position.z > 10) {
+                        scene.remove(obj.mesh);
+                        obstacles.splice(i, 1);
+                        score += 20;
+                        document.getElementById('score').innerText = score;
+                    }
+                }
+
+                renderer.render(scene, camera);
+            }
+        }
+
+        function endGame() {
+            isGameOver = true;
+            document.getElementById('gameover').style.display = 'block';
+        }
+
+        function restartGame() {
+            obstacles.forEach(o => scene.remove(o.mesh));
+            decorations.forEach(d => scene.remove(d));
+            obstacles = [];
+            decorations = [];
+            score = 0;
+            currentLane = 1;
+            player.position.set(lanes[currentLane], 0.7, 0);
+            player.scale.set(1, 1, 1);
+            document.getElementById('score').innerText = score;
+            document.getElementById('gameover').style.display = 'none';
+            isGameOver = false;
+            animate();
+        }
+
+        function onWindowResize() {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        }
+
+        init();
+    </script>
+</body>
+</html>
