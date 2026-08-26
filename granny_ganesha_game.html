@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>3D મલ્ટીપ્લેયર રૂમ - ૨૦ મિનિટ ટાઈમર & YouTube</title>
+    <style>
+        * { user-select: none; box-sizing: border-box; }
+        body {
+            margin: 0;
+            background-color: #87CEEB;
+            color: #333;
+            font-family: Arial, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            overflow: hidden;
+        }
+        .lobby {
+            position: absolute;
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+            text-align: center;
+            z-index: 10;
+        }
+        input, .action-btn {
+            padding: 8px 12px;
+            margin: 5px;
+            font-size: 14px;
+            border-radius: 5px;
+            border: 1px solid #888;
+        }
+        .action-btn {
+            background: #ff0000;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        h3 { margin: 4px; font-size: 13px; text-align: center; color: #8B0000; }
+        canvas {
+            border: 4px solid #5c3a21;
+            background-color: #e6dfcc;
+            box-shadow: 0px 10px 20px rgba(0,0,0,0.3);
+            touch-action: none;
+            display: none;
+        }
+        .controls-container {
+            display: none;
+            justify-content: space-between;
+            width: 100%;
+            max-width: 360px;
+            margin-top: 10px;
+            padding: 0 5px;
+        }
+        .d-pad {
+            display: grid;
+            grid-template-columns: repeat(3, 38px);
+            grid-template-rows: repeat(3, 38px);
+            gap: 4px;
+        }
+        .btn {
+            background: #ffffff;
+            color: #333;
+            border: 2px solid #888;
+            border-radius: 8px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            box-shadow: 0 4px 0 #999;
+        }
+        .btn:active {
+            transform: translateY(4px);
+            box-shadow: 0 0 0 #999;
+        }
+        .p1-btn { border-color: #00aa00; }
+        .p2-btn { border-color: #0088cc; }
+        .yt-link {
+            display: inline-block;
+            margin-top: 10px;
+            color: #ff0000;
+            font-weight: bold;
+            text-decoration: none;
+        }
+    </style>
+</head>
+<body>
+
+<!-- મલ્ટીપ્લેયર રૂમ ક્રિએટ લોબી -->
+<div id="lobbyScreen" class="lobby">
+    <h2>🕉️ 3D મલ્ટીપ્લેયર રૂમ 🕉️</h2>
+    <p>તમારો નવો રૂમ કોડ દાખલ કરો:</p>
+    <input type="text" id="roomInput" placeholder="उदा. Room101" value="GaneshRoom"><br>
+    <button class="action-btn" onclick="createRoom()">રૂમ બનાવો & ગેમ શરૂ કરો</button>
+    <br><br>
+    <a href="https://www.youtube.com" target="_blank" class="yt-link">🔴 અમારી YouTube ચેનલ મુલાકાત લો</a>
+</div>
+
+<h3 id="roomTitle" style="display:none;"></h3>
+<canvas id="gameCanvas" width="360" height="360"></canvas>
+
+<!-- મોબાઈલ ટચ કંટ્રોલ્સ -->
+<div class="controls-container" id="controlsDiv">
+    <div class="d-pad">
+        <div></div><div class="btn p1-btn" id="p1-up">⬆️</div><div></div>
+        <div class="btn p1-btn" id="p1-left">⬅️</div><div></div><div class="btn p1-btn" id="p1-right">➡️</div>
+        <div></div><div class="btn p1-btn" id="p1-down">⬇️</div><div></div>
+    </div>
+    <div class="d-pad">
+        <div></div><div class="btn p2-btn" id="p2-up">⬆️</div><div></div>
+        <div class="btn p2-btn" id="p2-left">⬅️</div><div></div><div class="btn p2-btn" id="p2-right">➡️</div>
+        <div></div><div class="btn p2-btn" id="p2-down">⬇️</div><div></div>
+    </div>
+</div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+let gameStarted = false;
+let roomName = "";
+
+function createRoom() {
+    roomName = document.getElementById("roomInput").value || "DefaultRoom";
+    document.getElementById("lobbyScreen").style.display = "none";
+    canvas.style.display = "block";
+    document.getElementById("controlsDiv").style.display = "flex";
+    document.getElementById("roomTitle").style.display = "block";
+    document.getElementById("roomTitle").innerText = "રૂમ કોડ: " + roomName + " | 🕉️ માટીના ગણેશ સુરક્ષિત રૂમ";
+    
+    gameStarted = true;
+    lastTime = performance.now();
+    draw();
+}
+
+const enemyNames = [
+    "Granny", "Grandpa", "Slendrina", "Mom", "Husband",
+    "Nosferatu", "Evil Nun", "Baldi", "Rod", "Pennywise",
+    "Chucky", "Annabelle", "Slenderman", "Jeff", "Huggy Wuggy",
+    "Freddy", "Jason", "Ghostface", "Michael", "Teacher"
+];
+
+const p1 = { x: 30, y: 300, size: 14, speed: 3.5, color: "#00e600" };
+const p2 = { x: 60, y: 300, size: 14, speed: 3.5, color: "#00ccff" };
+
+let key = { x: 180, y: 180, size: 10 };
+let totalKeysCollected = 0;
+const targetKeys = 20;
+
+// ૨૦ મિનિટ ટાઈમર (૨૦ મિનિટ = ૧૨૦૦ સેકન્ડ)
+let timeLeft = 20 * 60; 
+let lastTime = 0;
+
+let gameOver = false;
+let gameWon = false;
+let wernaText = "";
+
+const safeRoom = { x: 240, y: 240, width: 110, height: 110 };
+
+const enemies = [];
+for (let i = 0; i < 20; i++) {
+    enemies.push({
+        name: enemyNames[i],
+        x: Math.random() * (canvas.width - 60) + 20,
+        y: Math.random() * (canvas.height - 60) + 20,
+        size: 14,
+        speedX: (Math.random() - 0.5) * 2.2,
+        speedY: (Math.random() - 0.5) * 2.2
+    });
+}
+
+const bossKing = {
+    x: 180, y: 80, size: 22,
+    speedX: 1.8, speedY: 1.8
+};
+
+const input = {
+    p1: { up: false, down: false, left: false, right: false },
+    p2: { up: false, down: false, left: false, right: false }
+};
+
+function setupTouch(id, player, dir) {
+    const btn = document.getElementById(id);
+    if(!btn) return;
+    btn.addEventListener("touchstart", (e) => { e.preventDefault(); input[player][dir] = true; });
+    btn.addEventListener("touchend", (e) => { e.preventDefault(); input[player][dir] = false; });
+    btn.addEventListener("mousedown", () => input[player][dir] = true);
+    btn.addEventListener("mouseup", () => input[player][dir] = false);
+}
+
+setupTouch("p1-up", "p1", "up"); setupTouch("p1-down", "p1", "down");
+setupTouch("p1-left", "p1", "left"); setupTouch("p1-right", "p1", "right");
+setupTouch("p2-up", "p2", "up"); setupTouch("p2-down", "p2", "down");
+setupTouch("p2-left", "p2", "left"); setupTouch("p2-right", "p2", "right");
+
+document.addEventListener("keydown", (e) => {
+    if (!gameStarted) return;
+    if (e.key === "w" || e.key === "W") input.p1.up = true;
+    if (e.key === "s" || e.key === "S") input.p1.down = true;
+    if (e.key === "a" || e.key === "A") input.p1.left = true;
+    if (e.key === "d" || e.key === "D") input.p1.right = true;
+    if (e.key === "ArrowUp") input.p2.up = true;
+    if (e.key === "ArrowDown") input.p2.down = true;
+    if (e.key === "ArrowLeft") input.p2.left = true;
+    if (e.key === "ArrowRight") input.p2.right = true;
+});
+
+document.addEventListener("keyup", (e) => {
+    if (e.key === "w" || e.key === "W") input.p1.up = false;
+    if (e.key === "s" || e.key === "S") input.p1.down = false;
+    if (e.key === "a" || e.key === "A") input.p1.left = false;
+    if (e.key === "d" || e.key === "D") input.p1.right = false;
+    if (e.key === "ArrowUp") input.p2.up = false;
+    if (e.key === "ArrowDown") input.p2.down = false;
+    if (e.key === "ArrowLeft") input.p2.left = false;
+    if (e.key === "ArrowRight") input.p2.right = false;
+});
+
+function resetKey() {
+    key.x = Math.random() * (canvas.width - 50) + 20;
+    key.y = Math.random() * (canvas.height - 50) + 20;
+}
+
+function movePlayer(p, ctrl) {
+    if (ctrl.up) p.y -= p.speed;
+    if (ctrl.down) p.y += p.speed;
+    if (ctrl.left) p.x -= p.speed;
+    if (ctrl.right) p.x += p.speed;
+
+    p.x = Math.max(0, Math.min(canvas.width - p.size, p.x));
+    p.y = Math.max(0, Math.min(canvas.height - p.size, p.y));
+}
+
+function isInSafeRoom(p) {
+    return p.x >= safeRoom.x && p.x <= safeRoom.x + safeRoom.width &&
+           p.y >= safeRoom.y && p.y <= safeRoom.y + safeRoom.height;
+}
+
+function update(timestamp) {
+    if (gameOver || gameWon || !gameStarted) return;
+
+    // ટાઈમર મેનેજમેન્ટ
+    if (!lastTime) lastTime = timestamp;
+    let elapsed = (timestamp - lastTime) / 1000;
+    if (elapsed >= 1) {
+        timeLeft--;
+        lastTime = timestamp;
+        if (timeLeft <= 0) {
+            gameOver = true;
+            wernaText = "૨૦ મિનિટનો સમય પૂરો થઈ ગયો!";
+        }
+    }
+
+    movePlayer(p1, input.p1);
+    movePlayer(p2, input.p2);
+
+    if (Math.hypot(p1.x - key.x, p1.y - key.y) < p1.size + 4 ||
+        Math.hypot(p2.x - key.x, p2.y - key.y) < p2.size + 4) {
+        totalKeysCollected++;
+        if (totalKeysCollected >= targetKeys) {
+            gameWon = true;
+        } else {
+            resetKey();
+        }
+    }
+
+    enemies.forEach(enemy => {
+        enemy.x += enemy.speedX; enemy.y += enemy.speedY;
+        if (enemy.x <= 0 || enemy.x >= canvas.width - enemy.size) enemy.speedX *= -1;
+        if (enemy.y <= 0 || enemy.y >= canvas.height - enemy.size) enemy.speedY *= -1;
+
+        if (!isInSafeRoom(p1) && Math.hypot(p1.x - enemy.x, p1.y - enemy.y) < p1.size) {
+            gameOver = true; wernaText = "P1 આઉટ થયો!";
+        }
+        if (!isInSafeRoom(p2) && Math.hypot(p2.x - enemy.x, p2.y - enemy.y) < p2.size) {
+            gameOver = true; wernaText = "P2 આઉટ થયો!";
+        }
+    });
+
+    bossKing.x += bossKing.speedX; bossKing.y += bossKing.speedY;
+    if (bossKing.x <= 0 || bossKing.x >= canvas.width - bossKing.size) bossKing.speedX *= -1;
+    if (bossKing.y <= 0 || bossKing.y >= canvas.height - bossKing.size) bossKing.speedY *= -1;
+
+    if (!isInSafeRoom(p1) && Math.hypot(p1.x - bossKing.x, p1.y - bossKing.y) < p1.size + 5) {
+        gameOver = true; wernaText = "Baby In Yellow એ P1 ને પકડ્યો!";
+    }
+    if (!isInSafeRoom(p2) && Math.hypot(p2.x - bossKing.x, p2.y - bossKing.y) < p2.size + 5) {
+        gameOver = true; wernaText = "Baby In Yellow એ P2 ને પકડ્યો!";
+    }
+}
+
+function draw3DSphere(x, y, radius, color) {
+    ctx.save();
+    ctx.beginPath();
+    ctx.ellipse(x + 3, y + radius - 2, radius, radius / 3, 0, 0, Math.PI * 2);
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    ctx.fill();
+
+    let grad = ctx.createRadialGradient(x - radius/3, y - radius/3, radius/5, x, y, radius);
+    grad.addColorStop(0, '#ffffff');
+    grad.addColorStop(0.3, color);
+    grad.addColorStop(1, '#000000');
+    ctx.beginPath();
+    ctx.arc(x, y, radius, 0, Math.PI * 2);
+    ctx.fillStyle = grad;
+    ctx.fill();
+    ctx.restore();
+}
+
+function draw(timestamp) {
+    if (!gameStarted) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+    if (gameOver || gameWon) {
+        ctx.fillStyle = gameWon ? "#00aa00" : "#cc0000";
+        ctx.font = "bold 20px Arial";
+        ctx.fillText(gameWon ? "🎉 વિજય થયો!" : "GAME OVER", 90, 140);
+        ctx.fillStyle = "#333";
+        ctx.font = "13px Arial";
+        ctx.fillText(gameWon ? "૨૦ ચાવીઓ સમયસર મળી ગઈ!" : wernaText, 50, 180);
+        ctx.fillText("🔴 YouTube ચેનલ સબસ્ક્રાઇબ કરો!", 70, 220);
+        return;
+    }
+
+    update(timestamp);
+
+    // ૧. સેફ રૂમ
+    ctx.save();
+    ctx.fillStyle = "#ffe6b3";
+    ctx.fillRect(safeRoom.x, safeRoom.y, safeRoom.width, safeRoom.height);
+    ctx.strokeStyle = "#d4af37";
+    ctx.lineWidth = 4;
+    ctx.strokeRect(safeRoom.x, safeRoom.y, safeRoom.width, safeRoom.height);
+    
+    ctx.fillStyle = "#b35900";
+    ctx.font = "bold 11px Arial";
+    ctx.fillText("🕉️ ગણેશ સુરક્ષિત રૂમ", safeRoom.x + 8, safeRoom.y + 20);
+    ctx.restore();
+
+    // ૨. ચાવી
+    draw3DSphere(key.x, key.y, key.size / 2 + 2, "#ffd700");
+
+    // ૩. પ્લેયર્સ
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    ctx.fillRect(p1.x + 3, p1.y + 3, p1.size, p1.size);
+    ctx.fillStyle = p1.color;
+    ctx.fillRect(p1.x, p1.y, p1.size, p1.size);
+
+    ctx.fillStyle = "rgba(0,0,0,0.2)";
+    ctx.fillRect(p2.x + 3, p2.y + 3, p2.size, p2.size);
+    ctx.fillStyle = p2.color;
+    ctx.fillRect(p2.x, p2.y, p2.size, p2.size);
+
+    // ૪. દુશ્મનો
+    enemies.forEach(enemy => {
+        draw3DSphere(enemy.x, enemy.y, enemy.size / 2, "#ff3333");
+    });
+
+    // ૫. બોસ
+    draw3DSphere(bossKing.x, bossKing.y, bossKing.size / 2, "#ffcc00");
+
+    // સ્કોર અને ટાઈમર બોર્ડ
+    ctx.fillStyle = "#8B0000";
+    ctx.font = "bold 12px Arial";
+    let mins = Math.floor(timeLeft / 60);
+    let secs = timeLeft % 60;
+    let timeStr = `${mins}:${secs < 10 ? '0' : ''}${secs}`;
+    ctx.fillText("🔑 " + totalKeysCollected + "/20 | ⏱️ " + timeStr, 10, 20);
+
+    requestAnimationFrame(draw);
+}
+</script>
+</body>
+</html>
