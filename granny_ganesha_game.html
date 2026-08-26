@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="gu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>REAL 3D MULTIPLAYER HORROR GAME</title>
+    <!-- Three.js (Real 3D Engine) & PeerJS (2 Phone Syncing) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        * { user-select: none; box-sizing: border-box; margin: 0; padding: 0; }
+        body { background: #111; color: #fff; font-family: Arial, sans-serif; overflow: hidden; }
+        
+        /* લોબી સ્ક્રીન */
+        #lobby {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.9); display: flex; flex-direction: column;
+            align-items: center; justify-content: center; z-index: 100;
+        }
+        input, button {
+            padding: 12px; margin: 8px; font-size: 16px; border-radius: 8px; border: none;
+        }
+        input { width: 250px; text-align: center; }
+        button { background: #ff0000; color: white; font-weight: bold; cursor: pointer; }
+
+        /* UI overlay */
+        #ui {
+            position: absolute; top: 10px; left: 10px; z-index: 10;
+            color: #ffd700; font-size: 16px; font-weight: bold;
+            text-shadow: 2px 2px 4px #000;
+        }
+
+        /* મોબાઈલ જોયસ્ટિક/કંટ્રોલ્સ */
+        #controls {
+            position: absolute; bottom: 20px; left: 20px; z-index: 10;
+            display: grid; grid-template-columns: repeat(3, 50px); gap: 5px;
+        }
+        .btn {
+            width: 50px; height: 50px; background: rgba(255,255,255,0.3);
+            border: 2px solid #fff; border-radius: 10px; color: white;
+            font-size: 20px; display: flex; align-items: center; justify-content: center;
+        }
+    </style>
+</head>
+<body>
+
+<!-- ૧. આઈડી અને સિંકિંગ લોબી -->
+<div id="lobby">
+    <h2 style="color: #ffd700; margin-bottom: 15px;">🕉️ 3D મલ્ટીપ્લેયર ગણેશ હોરર 🕉️</h2>
+    <input type="text" id="playerName" placeholder="તમારું આઈડી નેમ (Your ID Name)">
+    <input type="text" id="targetPeerId" placeholder="સામેવાળા મિત્રનું ID (જોઈન થવા)">
+    
+    <button onclick="startHost()">૧. નવો રૂમ બનાવો (Host)</button>
+    <button onclick="connectPeer()">૨. મિત્રના ID માં જોડાઓ (Join)</button>
+
+    <p id="myIdText" style="margin-top: 15px; color: #00ff00;"></p>
+</div>
+
+<!-- ૨. UI ઇન્ફોર્મેશન -->
+<div id="ui">
+    🔑 ચાવીઓ: <span id="keyCount">0</span> / 20 | ⏱️ સમય: <span id="timer">20:00</span>
+    <br><span id="status" style="color:#00ff00;"></span>
+</div>
+
+<!-- ૩. મોબાઈલ ટચ કંટ્રોલ્સ -->
+<div id="controls">
+    <div></div><div class="btn" id="btnUp">⬆️</div><div></div>
+    <div class="btn" id="btnLeft">⬅️</div><div></div><div class="btn" id="btnRight">➡️</div>
+    <div></div><div class="btn" id="btnDown">⬇️</div><div></div>
+</div>
+
+<script>
+// --- PEERJS (બે ફોન સિંક કરવા માટે) ---
+let peer, conn;
+let myPlayerName = "";
+let isHost = false;
+
+function initPeer() {
+    myPlayerName = document.getElementById("playerName").value || "Player_" + Math.floor(Math.random()*1000);
+    peer = new Peer(myPlayerName);
+
+    peer.on('open', (id) => {
+        document.getElementById("myIdText").innerText = "તમારું ID Name છે: " + id;
+    });
+
+    peer.on('connection', (c) => {
+        conn = c;
+        setupConnection();
+    });
+}
+
+function startHost() {
+    isHost = true;
+    initPeer();
+    document.getElementById("lobby").style.display = "none";
+    init3DGame();
+}
+
+function connectPeer() {
+    isHost = false;
+    initPeer();
+    let target = document.getElementById("targetPeerId").value;
+    setTimeout(() => {
+        conn = peer.connect(target);
+        setupConnection();
+        document.getElementById("lobby").style.display = "none";
+        init3DGame();
+    }, 1000);
+}
+
+function setupConnection() {
+    document.getElementById("status").innerText = "સિંક થઈ ગયું! (Connected)";
+    conn.on('data', (data) => {
+        // બીજા ફોનની પોઝિશન અપડેટ કરવી
+        if (otherPlayerMesh) {
+            otherPlayerMesh.position.set(data.x, data.y, data.z);
+        }
+    });
+}
+
+// --- THREE.JS (સાચું 3D એન્જિન) ---
+let scene, camera, renderer;
+let myPlayerMesh, otherPlayerMesh;
+let moveState = { up: false, down: false, left: false, right: false };
+
+function init3DGame() {
+    // 3D સીન અને કેમેરા
+    scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x87CEEB); // દિવસનું અજવાળું (Sky Blue)
+
+    camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+    renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.shadowMap.enabled = true; // સાચા 3D શેડો
+    document.body.appendChild(renderer.domElement);
+
+    // 3D લાઇટ (સૂર્યપ્રકાશ)
+    const sunLight = new THREE.DirectionalLight(0xffffff, 1);
+    sunLight.position.set(10, 20, 10);
+    sunLight.castShadow = true;
+    scene.add(sunLight);
+    scene.add(new THREE.AmbientLight(0x404040));
+
+    // 3D જમીન (Ground)
+    const groundGeo = new THREE.PlaneGeometry(40, 40);
+    const groundMat = new THREE.MeshStandardMaterial({ color: 0xd2b48c });
+    const ground = new THREE.Mesh(groundGeo, groundMat);
+    ground.rotation.x = -Math.PI / 2;
+    ground.receiveShadow = true;
+    scene.add(ground);
+
+    // 3D માટીના ગણેશજીનો સુરક્ષિત રૂમ (Safe Zone)
+    const roomGeo = new THREE.BoxGeometry(8, 4, 8);
+    const roomMat = new THREE.MeshStandardMaterial({ color: 0xffa500, transparent: true, opacity: 0.4 });
+    const safeZone = new THREE.Mesh(roomGeo, roomMat);
+    safeZone.position.set(15, 2, 15);
+    scene.add(safeZone);
+
+    // 3D પ્લેયર ૧ (મારો પ્લેયર - 3D Box/Cube)
+    const p1Geo = new THREE.BoxGeometry(1, 1.5, 1);
+    const p1Mat = new THREE.MeshStandardMaterial({ color: 0x00ff00 });
+    myPlayerMesh = new THREE.Mesh(p1Geo, p1Mat);
+    myPlayerMesh.position.set(0, 0.75, 0);
+    myPlayerMesh.castShadow = true;
+    scene.add(myPlayerMesh);
+
+    // 3D પ્લેયર ૨ (બીજા ફોનનો પ્લેયર)
+    const p2Geo = new THREE.BoxGeometry(1, 1.5, 1);
+    const p2Mat = new THREE.MeshStandardMaterial({ color: 0x00ffff });
+    otherPlayerMesh = new THREE.Mesh(p2Geo, p2Mat);
+    otherPlayerMesh.position.set(2, 0.75, 0);
+    otherPlayerMesh.castShadow = true;
+    scene.add(otherPlayerMesh);
+
+    // 3D Baby in Yellow (બોસ રાજા)
+    const bossGeo = new THREE.SphereGeometry(1.2, 16, 16);
+    const bossMat = new THREE.MeshStandardMaterial({ color: 0xffff00 });
+    const boss = new THREE.Mesh(bossGeo, bossMat);
+    boss.position.set(-5, 1.2, -5);
+    boss.castShadow = true;
+    scene.add(boss);
+
+    setupTouchEvents();
+    animate();
+}
+
+// ટચ કંટ્રોલ્સ
+function setupTouchEvents() {
+    const bindTouch = (id, dir) => {
+        let el = document.getElementById(id);
+        el.addEventListener("touchstart", (e) => { e.preventDefault(); moveState[dir] = true; });
+        el.addEventListener("touchend", (e) => { e.preventDefault(); moveState[dir] = false; });
+    };
+    bindTouch("btnUp", "up"); bindTouch("btnDown", "down");
+    bindTouch("btnLeft", "left"); bindTouch("btnRight", "right");
+}
+
+function animate() {
+    requestAnimationFrame(animate);
+
+    // 3D મુવમેન્ટ logic
+    let speed = 0.1;
+    if (moveState.up) myPlayerMesh.position.z -= speed;
+    if (moveState.down) myPlayerMesh.position.z += speed;
+    if (moveState.left) myPlayerMesh.position.x -= speed;
+    if (moveState.right) myPlayerMesh.position.x += speed;
+
+    // કેમેરાને પ્લેયરની પાછળ 3D વ્યુમાં રાખવો
+    camera.position.set(myPlayerMesh.position.x, myPlayerMesh.position.y + 8, myPlayerMesh.position.z + 10);
+    camera.lookAt(myPlayerMesh.position);
+
+    // બીજા ફોન સાથે પોતાના લાઈવ લોકેશન મોકલવા (Real-time Sync)
+    if (conn && conn.open) {
+        conn.send({
+            x: myPlayerMesh.position.x,
+            y: myPlayerMesh.position.y,
+            z: myPlayerMesh.position.z
+        });
+    }
+
+    renderer.render(scene, camera);
+}
+</script>
+</body>
+</html>
