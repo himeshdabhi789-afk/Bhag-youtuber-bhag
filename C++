@@ -1,0 +1,27 @@
+
+// Safe Zone / Window Hide Logic
+Class WindowSafeZone : MonoBehaviour {
+    public bool isPlayerInsideSafeZone = false;
+    public Transform windowPosition;
+
+    void OnTriggerEnter(Collider other) {
+        // જો ખેલાડી આ બારી પાસે પહોંચે
+        if (other.CompareTag("Player")) {
+            isPlayerInsideSafeZone = true;
+            
+            // ગ્રેની પ્લેયરને જોઈ કે પકડી શકશે નહીં
+            GrannyAI.instance.canSeePlayer = false;
+            GrannyAI.instance.StopChasing();
+            
+            Debug.Log("Player is in Safe Zone (Window Area - Gurukrupa View). Granny cannot attack here!");
+        }
+    }
+
+    void OnTriggerExit(Collider other) {
+        // ખેલાડી સેફ ઝોનમાંથી બહાર નીકળે ત્યારે
+        if (other.CompareTag("Player")) {
+            isPlayerInsideSafeZone = false;
+            GrannyAI.instance.canSeePlayer = true;
+        }
+    }
+}
