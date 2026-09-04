@@ -1,0 +1,166 @@
+Index.html<!DOCTYPE html>
+<html lang="gu">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ભાગ યુટ્યુબર ભાગ - Mobile</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #1a1a1a;
+            color: #fff;
+            font-family: Arial, sans-serif;
+            text-align: center;
+            touch-action: manipulation;
+        }
+        #gameCanvas {
+            background-color: #333;
+            border: 3px solid #ff0000;
+            display: block;
+            margin: 10px auto;
+            max-width: 95%;
+        }
+        .info {
+            font-size: 16px;
+            margin: 10px;
+        }
+    </style>
+</head>
+<body>
+
+    <h2>ભાગ યુટ્યુબર ભાગ 🏃‍♂️</h2>
+    <p class="info">Player: <b>Gaming Engineer Gamer</b><br>👉 જમ્પ મારવા સ્ક્રીન પર ટચ કરો!</p>
+    
+    <canvas id="gameCanvas" width="360" height="500"></canvas>
+
+    <script>
+        const canvas = document.getElementById("gameCanvas");
+        const ctx = canvas.getContext("2d");
+
+        let player = {
+            x: 50,
+            y: 380,
+            width: 35,
+            height: 45,
+            color: "#00ffcc",
+            dy: 0,
+            gravity: 0.6,
+            jumpPower: -12,
+            isGrounded: false
+        };
+
+        let obstacle = {
+            x: canvas.width,
+            y: 390,
+            width: 30,
+            height: 35,
+            color: "#ff0055",
+            speed: 5
+        };
+
+        let score = 0;
+        let isGameOver = false;
+
+        // મોબાઈલ ટચ (Touch) અને ક્લિક સપોર્ટ
+        function doJump() {
+            if (player.isGrounded && !isGameOver) {
+                player.dy = player.jumpPower;
+                player.isGrounded = false;
+            } else if (isGameOver) {
+                restartGame();
+            }
+        }
+
+        window.addEventListener("touchstart", function (e) {
+            doJump();
+        });
+        window.addEventListener("mousedown", function (e) {
+            doJump();
+        });
+
+        function update() {
+            if (isGameOver) return;
+
+            player.dy += player.gravity;
+            player.y += player.dy;
+
+            if (player.y + player.height >= 425) {
+                player.y = 425 - player.height;
+                player.dy = 0;
+                player.isGrounded = true;
+            }
+
+            obstacle.x -= obstacle.speed;
+            if (obstacle.x + obstacle.width < 0) {
+                obstacle.x = canvas.width;
+                score += 100;
+                obstacle.speed += 0.2;
+            }
+
+            if (
+                player.x < obstacle.x + obstacle.width &&
+                player.x + player.width > obstacle.x &&
+                player.y < obstacle.y + obstacle.height &&
+                player.y + player.height > obstacle.y
+            ) {
+                isGameOver = true;
+            }
+        }
+
+        function draw() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            // જમીન
+            ctx.fillStyle = "#666";
+            ctx.fillRect(0, 425, canvas.width, 75);
+
+            // પ્લેયર (Gaming Engineer Gamer)
+            ctx.fillStyle = player.color;
+            ctx.fillRect(player.x, player.y, player.width, player.height);
+            
+            ctx.fillStyle = "#000";
+            ctx.font = "10px Arial";
+            ctx.fillText("GEG", player.x + 6, player.y + 25);
+
+            // વિઘ્ન
+            ctx.fillStyle = obstacle.color;
+            ctx.fillRect(obstacle.x, obstacle.y, obstacle.width, obstacle.height);
+
+            // સબસ્ક્રાઇબર્સ
+            ctx.fillStyle = "#fff";
+            ctx.font = "18px Arial";
+            ctx.fillText("Subscribers: " + score, 15, 30);
+
+            if (isGameOver) {
+                ctx.fillStyle = "rgba(0, 0, 0, 0.8)";
+                ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+                ctx.fillStyle = "#ff0000";
+                ctx.font = "30px Arial";
+                ctx.fillText("GAME OVER", 90, 220);
+
+                ctx.fillStyle = "#fff";
+                ctx.font = "16px Arial";
+                ctx.fillText("ફરી રમવા સ્ક્રીન પર ટચ કરો", 80, 260);
+            }
+        }
+
+        function gameLoop() {
+            update();
+            draw();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function restartGame() {
+            player.y = 380;
+            obstacle.x = canvas.width;
+            obstacle.speed = 5;
+            score = 0;
+            isGameOver = false;
+        }
+
+        gameLoop();
+    </script>
+</body>
+</html>
